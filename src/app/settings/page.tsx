@@ -21,7 +21,7 @@ export default async function SettingsPage() {
   const scheduler = await schedulerStatus();
 
   return (
-    <main style={{ maxWidth: 720 }}>
+    <div style={{ maxWidth: 720 }}>
       <div className="page-head">
         <div>
           <h1>Settings</h1>
@@ -62,6 +62,6 @@ export default async function SettingsPage() {
           <SchedulerButtons installed={scheduler.installed} />
         </section>
       </div>
-    </main>
+    </div>
   );
 }

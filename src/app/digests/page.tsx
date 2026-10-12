@@ -12,7 +12,7 @@ export default async function DigestsPage() {
   const generating = list.some((d) => d.status === "generating");
 
   return (
-    <main style={{ maxWidth: 860 }}>
+    <div style={{ maxWidth: 860 }}>
       <AutoRefresh active={generating} />
       <div className="page-head">
         <div>
@@ -34,7 +34,7 @@ export default async function DigestsPage() {
           ))}
         </div>
       )}
-    </main>
+    </div>
   );
 }
 

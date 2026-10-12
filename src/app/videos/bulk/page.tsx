@@ -2,7 +2,7 @@ import { BulkStatsForm } from "@/components/BulkStatsForm";
 
 export default function BulkStatsPage() {
   return (
-    <main style={{ maxWidth: 860 }}>
+    <div style={{ maxWidth: 860 }}>
       <div className="page-head">
         <div>
           <h1>Log stats in bulk</h1>
@@ -10,6 +10,6 @@ export default function BulkStatsPage() {
         </div>
       </div>
       <BulkStatsForm />
-    </main>
+    </div>
   );
 }

@@ -27,11 +27,11 @@ export default async function VideoPage({ params }: { params: Promise<{ id: stri
   const posted = v.pipelineState === "posted" || v.pipelineState === "paid";
 
   return (
-    <main>
+    <div>
       <div className="page-head">
         <div>
           <p className="small" style={{ margin: 0 }}>
-            <Link className="link" href="/">
+            <Link className="link" href="/videos">
               Videos
             </Link>{" "}
             <span className="faint">/</span> <span className="muted">{v.creatorName}</span>
@@ -195,6 +195,6 @@ export default async function VideoPage({ params }: { params: Promise<{ id: stri
           )}
         </div>
       </div>
-    </main>
+    </div>
   );
 }

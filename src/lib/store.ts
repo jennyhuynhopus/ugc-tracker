@@ -293,3 +293,36 @@ export async function lastScheduledDigestAt(): Promise<string | null> {
   const [r] = await sql`select max(created_at) as at from digests where trigger = 'schedule'`;
   return iso(r?.at as Date | null);
 }
+
+// ── Overview analytics ───────────────────────────────────────────────────────
+
+/** Cumulative counts at each video's last snapshot per UTC day, since `sinceDay`. */
+export async function listDailyRows(sinceDay: string): Promise<import("./analytics").DailyRow[]> {
+  const sql = await db();
+  const rows = await sql`
+    select distinct on (video_id, day)
+      video_id, to_char(captured_at at time zone 'UTC', 'YYYY-MM-DD') as day, views, likes, comments
+    from snapshots
+    where captured_at >= ${`${sinceDay}T00:00:00Z`}
+    order by video_id, day, captured_at desc`;
+  return rows.map((r) => ({
+    videoId: r.videoId as string,
+    day: r.day as string,
+    views: r.views as number,
+    likes: r.likes as number,
+    comments: r.comments as number,
+  }));
+}
+
+/** Each video's cumulative counts at its last snapshot before `beforeDay`. */
+export async function listBaselines(beforeDay: string): Promise<Map<string, import("./analytics").Baseline>> {
+  const sql = await db();
+  const rows = await sql`
+    select distinct on (video_id) video_id, views, likes, comments
+    from snapshots
+    where captured_at < ${`${beforeDay}T00:00:00Z`}
+    order by video_id, captured_at desc`;
+  return new Map(
+    rows.map((r) => [r.videoId as string, { views: r.views as number, likes: r.likes as number, comments: r.comments as number }]),
+  );
+}

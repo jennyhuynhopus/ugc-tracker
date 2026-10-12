@@ -1,6 +1,9 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { Nav } from "@/components/Nav";
+import { Inter } from "next/font/google";
+import { Sidebar } from "@/components/Sidebar";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "UGC Tracker",
@@ -11,11 +14,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <body>
-        <div className="shell">
-          <Nav />
-          {children}
+        <div className="app">
+          <Sidebar />
+          <main className="main">{children}</main>
         </div>
       </body>
     </html>

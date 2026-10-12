@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function NewVideoPage() {
   const creators = await listCreators();
   return (
-    <main style={{ maxWidth: 640 }}>
+    <div style={{ maxWidth: 640 }}>
       <div className="page-head">
         <div>
           <h1>Add video</h1>
@@ -29,6 +29,6 @@ export default async function NewVideoPage() {
           <AddVideoForm creators={creators.map((c) => ({ id: c.id, name: c.name, rateUsd: c.rateUsd }))} />
         )}
       </div>
-    </main>
+    </div>
   );
 }

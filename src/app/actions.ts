@@ -184,8 +184,8 @@ export async function refreshStatsNow(videoId: string): Promise<FormState> {
 
 export async function deleteVideo(videoId: string): Promise<void> {
   await deleteVideoById(videoId);
-  revalidatePath("/");
-  redirect("/");
+  revalidatePath("/videos");
+  redirect("/videos");
 }
 
 export interface BulkResult {

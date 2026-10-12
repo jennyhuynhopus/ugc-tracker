@@ -80,7 +80,8 @@ function client(): Sql {
     // Supabase's pooler (port 6543) runs in transaction mode, which can't hold
     // prepared statements across requests.
     prepare: false,
-    max: 5,
+    // Override only for single-session test databases (e.g. PGlite): DATABASE_POOL_MAX=1.
+    max: Number(process.env.DATABASE_POOL_MAX) || 5,
     idle_timeout: 20,
     transform: postgres.camel,
     types: {

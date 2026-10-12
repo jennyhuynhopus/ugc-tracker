@@ -1,5 +1,6 @@
-import { type Creator, deriveMetrics, type Snapshot, turnaroundDays, type Video } from "./domain";
-import { getCreator, getVideo, listCreators, listSnapshots, listVideos } from "./store";
+import { buildOverview, dayRange, type Overview } from "./analytics";
+import { type Creator, deriveMetrics, type Platform, type Snapshot, turnaroundDays, type Video } from "./domain";
+import { getCreator, getVideo, listBaselines, listCreators, listDailyRows, listSnapshots, listVideos } from "./store";
 
 export { listCreators, listDigests } from "./store";
 
@@ -66,4 +67,17 @@ export async function listCreatorStats(): Promise<CreatorStats[]> {
       breakingOut: posted.filter((v) => v.performanceState === "breaking_out").length,
     };
   });
+}
+
+
+export async function getOverview(days: number, platform: Platform | null): Promise<Overview> {
+  const now = Date.now();
+  const windowStart = dayRange(days * 2, now)[0];
+  const [videos, creators, rows, baselines] = await Promise.all([
+    listVideos(),
+    listCreators(),
+    listDailyRows(windowStart),
+    listBaselines(windowStart),
+  ]);
+  return buildOverview({ days, now, platform, videos, creators, rows, baselines });
 }

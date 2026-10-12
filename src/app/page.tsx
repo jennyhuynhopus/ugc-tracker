@@ -1,151 +1,80 @@
 import Link from "next/link";
-import { PERFORMANCE_LABELS, PERFORMANCE_STATES, PIPELINE_LABELS, PIPELINE_STATES } from "@/lib/domain";
-import { PerformanceBadge, PipelineBadge, PlatformLabel } from "@/components/Badges";
-import { listVideoRows } from "@/lib/data";
-import { fmtNumber, fmtPercent, fmtRate, fmtRelative, fmtUsd } from "@/lib/format";
+import { IconAll, IconAt, IconComment, IconHeart, IconPlay, IconPulse, IconVideo, PlatformIcon } from "@/components/icons";
+import { MetricsChart } from "@/components/MetricsChart";
+import { KpiCard, PostActivity, TopCreators, TopVideos } from "@/components/Overview";
+import { getOverview } from "@/lib/data";
+import { PLATFORM_LABELS, PLATFORMS, type Platform } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
 
-type Search = Promise<{ state?: string; perf?: string }>;
+const RANGES = [7, 14, 30, 90] as const;
 
-export default async function VideosPage({ searchParams }: { searchParams: Search }) {
-  const { state, perf } = await searchParams;
-  const all = await listVideoRows();
-  const live = all.filter((v) => v.pipelineState === "posted" || v.pipelineState === "paid");
+type Search = Promise<{ days?: string; platform?: string }>;
 
-  const rows = all.filter((v) => (!state || v.pipelineState === state) && (!perf || v.performanceState === perf));
+export default async function OverviewPage({ searchParams }: { searchParams: Search }) {
+  const sp = await searchParams;
+  const days = RANGES.includes(Number(sp.days) as (typeof RANGES)[number]) ? Number(sp.days) : 14;
+  const platform = PLATFORMS.includes(sp.platform as Platform) ? (sp.platform as Platform) : null;
+  const o = await getOverview(days, platform);
 
-  const totalViews = live.reduce((n, v) => n + (v.latest?.views ?? 0), 0);
-  const spend = live.reduce((n, v) => n + (v.costUsd ?? 0), 0);
-  const breakingOut = live.filter((v) => v.performanceState === "breaking_out").length;
-  const inFlight = all.filter((v) => !["posted", "paid"].includes(v.pipelineState)).length;
+  const href = (next: { days?: number; platform?: Platform | null }) => {
+    const q = new URLSearchParams();
+    const d = next.days ?? days;
+    const p = next.platform === undefined ? platform : next.platform;
+    if (d !== 14) q.set("days", String(d));
+    if (p) q.set("platform", p);
+    const s = q.toString();
+    return s ? `/?${s}` : "/";
+  };
+  const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
   return (
-    <main>
-      <div className="page-head">
-        <div>
-          <h1>Videos</h1>
-          <p>Every creator video from brief to payout, with live performance once it's posted.</p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Link href="/videos/bulk" className="btn">
-            Log stats in bulk
+    <div>
+      <div className="crumbs">
+        <span>Analytics</span>
+        <span className="sep">›</span>
+        <strong>Overview</strong>
+        <span className="spacer" />
+        <Link href="/videos/new" className="btn btn-primary btn-sm">Add video</Link>
+      </div>
+
+      <div className="toolbar">
+        <nav className="seg" aria-label="Platform">
+          <Link href={href({ platform: null })} aria-current={platform === null ? "true" : undefined} title="All platforms">
+            <IconAll />
           </Link>
-          <Link href="/videos/new" className="btn btn-primary">
-            Add video
-          </Link>
-        </div>
+          {PLATFORMS.map((p) => (
+            <Link key={p} href={href({ platform: p })} aria-current={platform === p ? "true" : undefined} title={PLATFORM_LABELS[p]}>
+              <PlatformIcon platform={p} />
+            </Link>
+          ))}
+        </nav>
+        <nav className="seg" aria-label="Date range">
+          {RANGES.map((d) => (
+            <Link key={d} href={href({ days: d })} aria-current={days === d ? "true" : undefined}>
+              {d} days
+            </Link>
+          ))}
+        </nav>
       </div>
 
-      <div className="kpis">
-        <Kpi label="Live videos" value={String(live.length)} />
-        <Kpi label="Total views" value={fmtNumber(totalViews)} />
-        <Kpi label="Blended CPM" value={totalViews > 0 && spend > 0 ? fmtUsd((spend / totalViews) * 1000) : "—"} />
-        <Kpi label="Breaking out" value={String(breakingOut)} hint={`${inFlight} in production`} />
+      <div className="kpi-grid">
+        <KpiCard label="Posted videos" kpi={o.kpis.posted} icon={<IconVideo />} format={String} href="/videos" />
+        <KpiCard label="Active creators" kpi={o.kpis.activeCreators} icon={<IconAt />} format={String} href="/creators" />
+        <KpiCard label="Views" kpi={o.kpis.views} icon={<IconPlay />} />
+        <KpiCard label="Likes" kpi={o.kpis.likes} icon={<IconHeart />} />
+        <KpiCard label="Comments" kpi={o.kpis.comments} icon={<IconComment />} />
+        <KpiCard label="Engagement" kpi={o.kpis.engagement} icon={<IconPulse />} format={pct} />
       </div>
 
-      <div className="filters">
-        <Chip href="/" active={!state && !perf}>
-          All
-        </Chip>
-        {PERFORMANCE_STATES.map((p) => (
-          <Chip key={p} href={`/?perf=${p}`} active={perf === p}>
-            {PERFORMANCE_LABELS[p]}
-          </Chip>
-        ))}
-        <span className="faint" style={{ padding: "4px 2px" }}>
-          ·
-        </span>
-        {PIPELINE_STATES.map((s) => (
-          <Chip key={s} href={`/?state=${s}`} active={state === s}>
-            {PIPELINE_LABELS[s]}
-          </Chip>
-        ))}
+      <MetricsChart series={o.series} />
+
+      <div className="grid-halves">
+        <TopVideos items={o.topVideos} days={days} />
+        <TopCreators items={o.topCreators} days={days} />
       </div>
 
-      <div className="card table-wrap">
-        {rows.length === 0 ? (
-          <div className="empty">
-            <h3>{all.length === 0 ? "No videos yet" : "No videos match this filter"}</h3>
-            <p>
-              {all.length === 0 ? (
-                <>Add a creator, then add a video. Paste the posted URL and stats start tracking automatically.</>
-              ) : (
-                <Link className="link" href="/">
-                  Clear filters
-                </Link>
-              )}
-            </p>
-          </div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Video</th>
-                <th>Creator</th>
-                <th>Platform</th>
-                <th>Stage</th>
-                <th>Performance</th>
-                <th className="num">Views</th>
-                <th className="num">Velocity (24h)</th>
-                <th className="num">Engagement</th>
-                <th className="num">CPM</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((v) => (
-                <tr key={v.id}>
-                  <td className="cell-title">
-                    <Link className="link" href={`/videos/${v.id}`}>
-                      {v.title}
-                    </Link>
-                  </td>
-                  <td>{v.creatorName}</td>
-                  <td>
-                    <PlatformLabel platform={v.platform} />
-                  </td>
-                  <td>
-                    <PipelineBadge state={v.pipelineState} />
-                  </td>
-                  <td>
-                    <PerformanceBadge state={v.performanceState} />
-                    {v.lastPollError && (
-                      <span className="faint small" title={v.lastPollError}>
-                        {" "}
-                        ⚠︎
-                      </span>
-                    )}
-                  </td>
-                  <td className="num">{fmtNumber(v.latest?.views)}</td>
-                  <td className="num">{fmtRate(v.velocity)}</td>
-                  <td className="num">{fmtPercent(v.engagementRate)}</td>
-                  <td className="num">{fmtUsd(v.cpm)}</td>
-                  <td className="muted">{fmtRelative(v.lastPolledAt ?? v.updatedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </main>
-  );
-}
-
-function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="card kpi">
-      <div className="kpi-label">{label}</div>
-      <div className="kpi-value">{value}</div>
-      {hint && <div className="faint small">{hint}</div>}
+      <PostActivity heatmap={o.heatmap} streak={o.streak} />
     </div>
-  );
-}
-
-function Chip({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
-  return (
-    <Link href={href} className="chip" aria-current={active ? "true" : undefined}>
-      {children}
-    </Link>
   );
 }

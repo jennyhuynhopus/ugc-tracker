@@ -10,7 +10,7 @@ export default async function CreatorsPage() {
   const ranked = [...stats].sort((a, b) => (a.cpm ?? Number.POSITIVE_INFINITY) - (b.cpm ?? Number.POSITIVE_INFINITY));
 
   return (
-    <main>
+    <div>
       <div className="page-head">
         <div>
           <h1>Creators</h1>
@@ -77,6 +77,6 @@ export default async function CreatorsPage() {
           <CreatorForm />
         </section>
       </div>
-    </main>
+    </div>
   );
 }
