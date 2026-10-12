@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <!-- Frame: indigo tile -->
+  <rect x="0" y="0" width="32" height="32" rx="6" fill="#312e81"/>
+  <rect x="2" y="2" width="28" height="28" rx="4" fill="#4338ca"/>
+  <!-- Play button (video) -->
+  <rect x="6" y="6" width="2" height="8" fill="#e0e7ff"/>
+  <rect x="8" y="7" width="2" height="6" fill="#e0e7ff"/>
+  <rect x="10" y="8" width="2" height="4" fill="#e0e7ff"/>
+  <rect x="12" y="9" width="2" height="2" fill="#e0e7ff"/>
+  <!-- Rising bars (performance) -->
+  <rect x="6" y="22" width="4" height="4" fill="#34d399"/>
+  <rect x="12" y="19" width="4" height="7" fill="#34d399"/>
+  <rect x="18" y="15" width="4" height="11" fill="#10b981"/>
+  <rect x="24" y="10" width="4" height="16" fill="#10b981"/>
+  <!-- Breakout sparkle -->
+  <rect x="25" y="4" width="2" height="4" fill="#fcd34d"/>
+  <rect x="24" y="5" width="4" height="2" fill="#fcd34d"/>
+  <!-- Baseline -->
+  <rect x="5" y="26" width="24" height="1" fill="#a5b4fc"/>
+</svg>

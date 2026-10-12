@@ -1,0 +1,31 @@
+{
+  "name": "ugc-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Track UGC creator videos from brief to payout, auto-poll their stats, and get a weekly digest.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "node --test --experimental-strip-types src/lib/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "next": "^15.5.4",
+    "postgres": "^3.4.7",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "recharts": "^2.15.4",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "19.2",
+    "@types/react-dom": "19.2",
+    "typescript": "^5.9.3"
+  }
+}
