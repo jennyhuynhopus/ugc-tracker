@@ -270,55 +270,96 @@ function list(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
 }
 
+interface Page {
+  items: ListedVideo[];
+  /** Params for the next page, or null when there isn't one. */
+  next: Record<string, string> | null;
+}
+
+/** Fetch one page of a profile's videos. `cursor` is the previous page's `next`. */
+async function fetchPage(
+  path: string,
+  params: Record<string, string>,
+  read: (body: Json) => Page,
+): Promise<Page> {
+  return read(await getJson(path, params));
+}
+
 /**
- * The profile's most recent videos with current stats (one page, newest
- * first). One credit per call; YouTube makes two (Shorts + long-form).
+ * All of a profile's videos posted since `since`, newest first, with current
+ * stats. Pages through the profile until it passes `since` (capped at
+ * `maxPages` per feed). One credit per page.
  */
-export async function fetchProfileVideos(platform: Platform, handle: string, profileUrl: string): Promise<ListedVideo[]> {
+export async function fetchProfileVideos(
+  platform: Platform,
+  handle: string,
+  profileUrl: string,
+  since: number = Date.now() - 30 * 86_400_000,
+  maxPages = 6,
+): Promise<ListedVideo[]> {
   const ytParam: Record<string, string> = /^UC[\w-]{10,}$/.test(handle) ? { channelId: handle } : { handle };
+
+  async function crawl(path: string, base: Record<string, string>, read: (body: Json) => Page) {
+    const out: ListedVideo[] = [];
+    let params = base;
+    for (let page = 0; page < maxPages; page++) {
+      const { items, next } = await fetchPage(path, params, read);
+      out.push(...items);
+      const dated = items.filter((i) => i.publishedAt).map((i) => new Date(i.publishedAt as string).getTime());
+      // Stop once this page reaches past the window (pinned posts can be old,
+      // so look at the newest-but-oldest: every item older than `since`).
+      const reachedPast = dated.length > 0 && Math.min(...dated) < since && dated.filter((t) => t >= since).length < items.length / 2;
+      if (!next || items.length === 0 || reachedPast) break;
+      params = { ...base, ...next };
+    }
+    return out;
+  }
+
   switch (platform) {
-    case "tiktok": {
-      const body = await getJson("/v3/tiktok/profile/videos", { handle, sort_by: "latest" });
-      return list(body.aweme_list).map((v) => ({
-        externalId: String(at(v, "aweme_id")),
-        url: str(at(v, "url")) ?? `https://www.tiktok.com/@${handle}/video/${at(v, "aweme_id")}`,
-        caption: str(at(v, "desc")),
-        publishedAt: isoFromUnix(at(v, "create_time")),
-        metrics: {
-          views: num(at(v, "statistics.play_count")) ?? 0,
-          likes: num(at(v, "statistics.digg_count")) ?? 0,
-          comments: num(at(v, "statistics.comment_count")) ?? 0,
-          shares: num(at(v, "statistics.share_count")),
-          saves: num(at(v, "statistics.collect_count")),
-        },
-      }));
-    }
-    case "instagram": {
-      const body = await getJson("/v1/instagram/user/reels", { handle });
-      // Live responses wrap each reel in { media: {...} }; the docs' example doesn't.
-      return list(body.items).map((item) => {
-        const v = (at(item, "media") as Json | undefined) ?? item;
-        const code = str(at(v, "code")) ?? String(at(v, "id"));
-        return {
-          externalId: code,
-          url: str(at(v, "url")) ?? `https://www.instagram.com/reel/${code}/`,
-          caption: str(at(v, "caption.text")),
-          publishedAt: isoFromUnix(at(v, "taken_at")),
+    case "tiktok":
+      return crawl("/v3/tiktok/profile/videos", { handle, sort_by: "latest" }, (body) => ({
+        items: list(body.aweme_list).map((v) => ({
+          externalId: String(at(v, "aweme_id")),
+          url: str(at(v, "url")) ?? `https://www.tiktok.com/@${handle}/video/${at(v, "aweme_id")}`,
+          caption: str(at(v, "desc")),
+          publishedAt: isoFromUnix(at(v, "create_time")),
           metrics: {
-            views: num(at(v, "play_count")) ?? num(at(v, "ig_play_count")) ?? 0,
-            likes: num(at(v, "like_count")) ?? 0,
-            comments: num(at(v, "comment_count")) ?? 0,
-            shares: null,
-            saves: null,
+            views: num(at(v, "statistics.play_count")) ?? 0,
+            likes: num(at(v, "statistics.digg_count")) ?? 0,
+            comments: num(at(v, "statistics.comment_count")) ?? 0,
+            shares: num(at(v, "statistics.share_count")),
+            saves: num(at(v, "statistics.collect_count")),
           },
-        };
-      });
-    }
+        })),
+        next: body.has_more === false || body.has_more === 0 || body.max_cursor == null ? null : { max_cursor: String(body.max_cursor) },
+      }));
+    case "instagram":
+      return crawl("/v1/instagram/user/reels", { handle }, (body) => ({
+        // Live responses wrap each reel in { media: {...} }; the docs' example doesn't.
+        items: list(body.items).map((item) => {
+          const v = (at(item, "media") as Json | undefined) ?? item;
+          const code = str(at(v, "code")) ?? String(at(v, "id"));
+          return {
+            externalId: code,
+            url: str(at(v, "url")) ?? `https://www.instagram.com/reel/${code}/`,
+            caption: str(at(v, "caption.text")),
+            publishedAt: isoFromUnix(at(v, "taken_at")),
+            metrics: {
+              views: num(at(v, "play_count")) ?? num(at(v, "ig_play_count")) ?? 0,
+              likes: num(at(v, "like_count")) ?? 0,
+              comments: num(at(v, "comment_count")) ?? 0,
+              shares: null,
+              saves: null,
+            },
+          };
+        }),
+        next: (() => {
+          const more = at(body, "paging_info.more_available");
+          const id = str(at(body, "paging_info.max_id"));
+          return more && id ? { max_id: id } : null;
+        })(),
+      }));
     case "youtube": {
-      const [shorts, videos] = await Promise.all([
-        getJson("/v1/youtube/channel/shorts", { ...ytParam, sort: "newest" }),
-        getJson("/v1/youtube/channel-videos", { ...ytParam, sort: "latest" }),
-      ]);
       const toVideo = (v: unknown, dateKey: string): ListedVideo => ({
         externalId: String(at(v, "id")),
         url: str(at(v, "url")) ?? `https://www.youtube.com/watch?v=${at(v, "id")}`,
@@ -326,20 +367,32 @@ export async function fetchProfileVideos(platform: Platform, handle: string, pro
         publishedAt: isoFromString(at(v, dateKey)),
         metrics: { views: num(at(v, "viewCountInt")) ?? 0, likes: 0, comments: 0, shares: null, saves: null },
       });
-      return [...list(shorts.shorts).map((v) => toVideo(v, "publishDate")), ...list(videos.videos).map((v) => toVideo(v, "publishedTime"))];
+      const token = (body: Json) => (str(body.continuationToken) ? { continuationToken: str(body.continuationToken) as string } : null);
+      const [shorts, videos] = await Promise.all([
+        crawl("/v1/youtube/channel/shorts", { ...ytParam, sort: "newest" }, (b) => ({
+          items: list(b.shorts).map((v) => toVideo(v, "publishDate")),
+          next: token(b),
+        })),
+        crawl("/v1/youtube/channel-videos", { ...ytParam, sort: "latest" }, (b) => ({
+          items: list(b.videos).map((v) => toVideo(v, "publishedTime")),
+          next: token(b),
+        })),
+      ]);
+      return [...shorts, ...videos];
     }
-    case "facebook": {
-      const body = await getJson("/v1/facebook/profile/reels", { url: profileUrl });
-      return list(body.reels).map((v) => {
-        const url = str(at(v, "url")) ?? "";
-        return {
-          externalId: url.match(/\/reel\/(\d+)/)?.[1] ?? String(at(v, "id")),
-          url,
-          caption: str(at(v, "description")),
-          publishedAt: isoFromString(at(v, "creation_time")),
-          metrics: { views: num(at(v, "view_count")) ?? 0, likes: 0, comments: 0, shares: null, saves: null },
-        };
-      });
-    }
+    case "facebook":
+      return crawl("/v1/facebook/profile/reels", { url: profileUrl }, (body) => ({
+        items: list(body.reels).map((v) => {
+          const url = str(at(v, "url")) ?? "";
+          return {
+            externalId: url.match(/\/reel\/(\d+)/)?.[1] ?? String(at(v, "id")),
+            url,
+            caption: str(at(v, "description")),
+            publishedAt: isoFromString(at(v, "creation_time")),
+            metrics: { views: num(at(v, "view_count")) ?? 0, likes: 0, comments: 0, shares: null, saves: null },
+          };
+        }),
+        next: str(body.next_page_id) ? { next_page_id: str(body.next_page_id) as string, ...(str(body.cursor) ? { cursor: str(body.cursor) as string } : {}) } : null,
+      }));
   }
 }

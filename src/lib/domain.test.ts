@@ -11,6 +11,7 @@ import {
   pollDelayMs,
   trailingVelocity,
   velocityBenchmark,
+  viewsAt24h,
 } from "./domain.ts";
 
 const MIN = 60_000;
@@ -67,9 +68,17 @@ test("trailingVelocity uses the ~24h window", () => {
   const t0 = Date.parse("2026-10-01T00:00:00Z");
   const at = (h: number, views: number) => ({ capturedAt: new Date(t0 + h * HOUR).toISOString(), views });
   assert.equal(trailingVelocity([at(0, 0)]), null);
-  assert.equal(trailingVelocity([at(0, 0), at(2, 200)]), 100);
+  assert.equal(trailingVelocity([at(0, 0), at(4, 400)]), 100);
+  assert.equal(trailingVelocity([at(0, 0), at(0.5, 50)]), null); // too short a span
   // Base is the newest snapshot ≥24h before the last (h=10), not the first.
   assert.equal(trailingVelocity([at(0, 0), at(10, 1000), at(20, 5000), at(34, 3400)]), (3400 - 1000) / 24);
+});
+
+test("viewsAt24h only counts a reading 24-36h after posting", () => {
+  const posted = "2026-10-01T00:00:00Z";
+  const at = (h: number, views: number) => ({ capturedAt: new Date(Date.parse(posted) + h * 3_600_000).toISOString(), views });
+  assert.equal(viewsAt24h([at(2, 100), at(25, 900), at(40, 1500)], posted), 900);
+  assert.equal(viewsAt24h([at(400, 9000)], posted), null); // tracked weeks later
 });
 
 test("velocityBenchmark needs 3 points and uses the median", () => {
@@ -85,6 +94,7 @@ test("classifyPerformance", () => {
   assert.equal(classifyPerformance({ ...base, postedAt: posted(3), velocity: 200, totalViews: 600 }), "breaking_out");
   assert.equal(classifyPerformance({ ...base, postedAt: posted(3), velocity: 20, totalViews: 60 }), "warming_up");
   assert.equal(classifyPerformance({ ...base, postedAt: posted(72), velocity: 50, totalViews: 10_000 }), "steady");
+  assert.equal(classifyPerformance({ ...base, postedAt: posted(72), velocity: null, totalViews: 10_000 }), null); // no history yet
   assert.equal(classifyPerformance({ ...base, postedAt: posted(72), velocity: 2, totalViews: 10_000 }), "stalled");
   // No benchmark yet: never breaking out.
   assert.equal(

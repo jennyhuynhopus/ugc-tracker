@@ -271,7 +271,7 @@ export async function recordSnapshot(
   const series = await listSnapshots(videoId);
   const latest = series[series.length - 1];
   const velocity = trailingVelocity(series);
-  const views24h = video.views24h ?? viewsAt24h(series, video.postedAt);
+  const views24h = viewsAt24h(series, video.postedAt);
   const benchmark = video.platform ? await platformBenchmark(video.platform) : null;
   const performanceState = classifyPerformance({
     postedAt: video.postedAt,

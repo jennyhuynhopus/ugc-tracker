@@ -263,6 +263,9 @@ export function deriveMetrics(latest: Metrics | null, costUsd: number | null): D
   };
 }
 
+/** Shortest span between readings that a velocity is computed over. */
+export const MIN_VELOCITY_SPAN_HOURS = 3;
+
 /**
  * Views gained per hour over the trailing ~24h: compares the latest snapshot
  * with the newest one at least 24h older (or the oldest available, for a
@@ -278,18 +281,27 @@ export function trailingVelocity(snapshots: Pick<Snapshot, "capturedAt" | "views
     else break;
   }
   const hours = (lastT - new Date(base.capturedAt).getTime()) / HOUR;
-  if (hours <= 0) return null;
+  // Readings minutes apart say nothing about momentum.
+  if (hours < MIN_VELOCITY_SPAN_HOURS) return null;
   return Math.max(0, last.views - base.views) / hours;
 }
 
-/** Views at the first snapshot taken ≥24h after posting; null if none yet. */
+/**
+ * Views at the first snapshot taken 24–36h after posting; null if there's no
+ * reading in that window (e.g. tracking started later), so late-tracked
+ * videos don't pass off a weeks-later total as their first-day number.
+ */
 export function viewsAt24h(
   snapshots: Pick<Snapshot, "capturedAt" | "views">[],
   postedAt: string | null,
 ): number | null {
   if (!postedAt) return null;
-  const cutoff = new Date(postedAt).getTime() + DAY;
-  const s = snapshots.find((x) => new Date(x.capturedAt).getTime() >= cutoff);
+  const from = new Date(postedAt).getTime() + DAY;
+  const to = from + 12 * HOUR;
+  const s = snapshots.find((x) => {
+    const t = new Date(x.capturedAt).getTime();
+    return t >= from && t <= to;
+  });
   return s ? s.views : null;
 }
 
@@ -325,7 +337,8 @@ export function classifyPerformance(input: {
   }
   const age = now - new Date(postedAt).getTime();
   if (age < DAY) return "warming_up";
-  if (velocity == null) return "steady";
+  // Not enough history yet to say how it's trending.
+  if (velocity == null) return null;
   const gainedLastDay = velocity * 24;
   if (gainedLastDay < Math.max(10, totalViews * 0.01)) return "stalled";
   return "steady";
