@@ -15,7 +15,7 @@ function video(id: string, creatorId: string, postedAt: string, platform: Video[
   };
 }
 
-const creator = (id: string, name: string): Creator => ({ id, name, handles: {}, followers: {}, rateUsd: null, contractNotes: "", createdAt: "" });
+const creator = (id: string, name: string): Creator => ({ id, name, handles: {}, followers: {}, lastSyncedAt: null, syncError: null, rateUsd: null, contractNotes: "", createdAt: "" });
 const row = (videoId: string, day: string, views: number, likes = 0, comments = 0): DailyRow => ({ videoId, day, views, likes, comments });
 
 test("dayRange ends today, oldest first", () => {
@@ -72,4 +72,12 @@ test("buildOverview: KPIs vs previous period, series, tops, platform filter", ()
   const yt = buildOverview({ days: 3, now: NOW, platform: "youtube", videos, creators, rows, baselines: new Map() });
   assert.equal(yt.kpis.views.value, 1000);
   assert.deepEqual(yt.topCreators.map((t) => t.creator.name), ["Leo"]);
+});
+
+test("dailyGains spreads a late-tracked video's first reading back to its post day", () => {
+  const gains = dailyGains([row("a", "2026-10-12", 900, 90, 9), row("a", "2026-10-13", 1000)], new Map(), new Map([["a", "2026-10-10"]]));
+  assert.deepEqual(
+    gains.map((g) => [g.day, Math.round(g.views)]),
+    [["2026-10-10", 300], ["2026-10-11", 300], ["2026-10-12", 300], ["2026-10-13", 100]],
+  );
 });

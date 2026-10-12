@@ -3,6 +3,7 @@ import { generateDigest, isWeeklyDigestDue } from "@/lib/digest";
 import { pollDueVideos } from "@/lib/poll";
 import { safeEqual } from "@/lib/session";
 import { lastScheduledDigestAt } from "@/lib/store";
+import { syncDueCreators } from "@/lib/sync";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -18,12 +19,13 @@ async function tick(req: Request) {
   if (!secret || !safeEqual(auth, `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const sync = await syncDueCreators();
   const polls = await pollDueVideos();
   let digest: string | null = null;
   if (isWeeklyDigestDue(Date.now(), await lastScheduledDigestAt())) {
     digest = await generateDigest("schedule");
   }
-  return NextResponse.json({ ok: true, ...polls, digest });
+  return NextResponse.json({ ok: true, ...polls, sync, digest });
 }
 
 export const GET = tick;

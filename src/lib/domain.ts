@@ -143,6 +143,9 @@ export interface Creator {
   contractNotes: string;
   /** Follower/subscriber counts per platform, from the profile at add time. */
   followers: Partial<Record<Platform, number>>;
+  /** Last time this creator's profiles were scanned for videos. */
+  lastSyncedAt: string | null;
+  syncError: string | null;
   createdAt: string;
 }
 

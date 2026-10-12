@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CreatorForm } from "@/components/CreatorForm";
 import { PlatformIcon } from "@/components/icons";
+import { SyncButton } from "@/components/SyncButton";
 import { listCreatorStats } from "@/lib/data";
 import { PLATFORMS } from "@/lib/domain";
 import { fmtNumber, fmtUsd } from "@/lib/format";
@@ -17,6 +18,8 @@ export default async function CreatorsPage() {
         <span>Analytics</span>
         <span className="sep">›</span>
         <strong>Creators</strong>
+        <span className="spacer" />
+        {ranked.length > 0 && <SyncButton label="Sync all creators" />}
       </div>
 
       <div className="grid-2">

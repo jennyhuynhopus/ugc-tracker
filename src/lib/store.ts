@@ -28,6 +28,8 @@ function toCreator(r: Row): Creator {
     rateUsd: (r.rateUsd as number | null) ?? null,
     contractNotes: (r.contractNotes as string) ?? "",
     followers: (r.followers as Creator["followers"]) ?? {},
+    lastSyncedAt: iso(r.lastSyncedAt as Date | null),
+    syncError: (r.syncError as string | null) ?? null,
     createdAt: iso(r.createdAt as Date) as string,
   };
 }
@@ -101,7 +103,7 @@ export async function getCreator(id: string): Promise<Creator | null> {
   return r ? toCreator(r) : null;
 }
 
-export async function insertCreator(c: Omit<Creator, "id" | "createdAt">): Promise<string> {
+export async function insertCreator(c: Omit<Creator, "id" | "createdAt" | "lastSyncedAt" | "syncError">): Promise<string> {
   const sql = await db();
   const [r] = await sql`
     insert into creators (name, handles, followers, rate_usd, contract_notes)
@@ -118,13 +120,27 @@ export async function findCreatorByHandle(platform: Platform, handle: string): P
 
 export async function updateCreator(
   id: string,
-  f: Partial<Pick<Creator, "name" | "handles" | "followers" | "rateUsd" | "contractNotes">>,
+  f: Partial<Pick<Creator, "name" | "handles" | "followers" | "rateUsd" | "contractNotes" | "syncError">> & {
+    lastSyncedAt?: Date;
+  },
 ): Promise<void> {
   const sql = await db();
   const cols: Row = { ...f };
   if (f.handles) cols.handles = sql.json(asJson(f.handles));
   if (f.followers) cols.followers = sql.json(asJson(f.followers));
   await sql`update creators set ${sql(cols)} where id = ${id}`;
+}
+
+/** Creators whose profiles are due a scan (never, or longer ago than `olderThanMs`). */
+export async function listCreatorsDueSync(olderThanMs: number, limit: number): Promise<string[]> {
+  const sql = await db();
+  const cutoff = new Date(Date.now() - olderThanMs);
+  const rows = await sql`
+    select id from creators
+    where handles <> '{}'::jsonb and (last_synced_at is null or last_synced_at < ${cutoff})
+    order by last_synced_at nulls first
+    limit ${limit}`;
+  return rows.map((r) => r.id as string);
 }
 
 export async function deleteCreatorById(id: string): Promise<void> {

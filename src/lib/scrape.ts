@@ -242,3 +242,104 @@ export async function fetchProfile(platform: Platform, handle: string, url: stri
       return { name: str(body.name), followers: num(body.followerCount) };
   }
 }
+
+// ── A profile's recent videos ────────────────────────────────────────────────
+
+export interface ListedVideo {
+  externalId: string;
+  url: string;
+  caption: string | null;
+  publishedAt: string | null;
+  metrics: Metrics;
+}
+
+async function getJson(path: string, params: Record<string, string>): Promise<Json> {
+  const apiKey = process.env.SCRAPECREATORS_API_KEY;
+  if (!apiKey) throw new PermanentScrapeError("SCRAPECREATORS_API_KEY isn't set.");
+  const endpoint = new URL(path, BASE_URL);
+  for (const [k, v] of Object.entries(params)) endpoint.searchParams.set(k, v);
+  const res = await fetch(endpoint, { headers: { "x-api-key": apiKey }, signal: AbortSignal.timeout(45_000) });
+  if (res.status === 402) throw new PermanentScrapeError("ScrapeCreators is out of credits.");
+  if (res.status === 401 || res.status === 403) throw new PermanentScrapeError(`ScrapeCreators rejected the request (HTTP ${res.status}).`);
+  if (res.status === 400 || res.status === 404) throw new PermanentScrapeError(`Profile not found (HTTP ${res.status}).`);
+  if (!res.ok) throw new Error(`ScrapeCreators HTTP ${res.status}`);
+  return (await res.json()) as Json;
+}
+
+function list(v: unknown): unknown[] {
+  return Array.isArray(v) ? v : [];
+}
+
+/**
+ * The profile's most recent videos with current stats (one page, newest
+ * first). One credit per call; YouTube makes two (Shorts + long-form).
+ */
+export async function fetchProfileVideos(platform: Platform, handle: string, profileUrl: string): Promise<ListedVideo[]> {
+  const ytParam: Record<string, string> = /^UC[\w-]{10,}$/.test(handle) ? { channelId: handle } : { handle };
+  switch (platform) {
+    case "tiktok": {
+      const body = await getJson("/v3/tiktok/profile/videos", { handle, sort_by: "latest" });
+      return list(body.aweme_list).map((v) => ({
+        externalId: String(at(v, "aweme_id")),
+        url: str(at(v, "url")) ?? `https://www.tiktok.com/@${handle}/video/${at(v, "aweme_id")}`,
+        caption: str(at(v, "desc")),
+        publishedAt: isoFromUnix(at(v, "create_time")),
+        metrics: {
+          views: num(at(v, "statistics.play_count")) ?? 0,
+          likes: num(at(v, "statistics.digg_count")) ?? 0,
+          comments: num(at(v, "statistics.comment_count")) ?? 0,
+          shares: num(at(v, "statistics.share_count")),
+          saves: num(at(v, "statistics.collect_count")),
+        },
+      }));
+    }
+    case "instagram": {
+      const body = await getJson("/v1/instagram/user/reels", { handle });
+      // Live responses wrap each reel in { media: {...} }; the docs' example doesn't.
+      return list(body.items).map((item) => {
+        const v = (at(item, "media") as Json | undefined) ?? item;
+        const code = str(at(v, "code")) ?? String(at(v, "id"));
+        return {
+          externalId: code,
+          url: str(at(v, "url")) ?? `https://www.instagram.com/reel/${code}/`,
+          caption: str(at(v, "caption.text")),
+          publishedAt: isoFromUnix(at(v, "taken_at")),
+          metrics: {
+            views: num(at(v, "play_count")) ?? num(at(v, "ig_play_count")) ?? 0,
+            likes: num(at(v, "like_count")) ?? 0,
+            comments: num(at(v, "comment_count")) ?? 0,
+            shares: null,
+            saves: null,
+          },
+        };
+      });
+    }
+    case "youtube": {
+      const [shorts, videos] = await Promise.all([
+        getJson("/v1/youtube/channel/shorts", { ...ytParam, sort: "newest" }),
+        getJson("/v1/youtube/channel-videos", { ...ytParam, sort: "latest" }),
+      ]);
+      const toVideo = (v: unknown, dateKey: string): ListedVideo => ({
+        externalId: String(at(v, "id")),
+        url: str(at(v, "url")) ?? `https://www.youtube.com/watch?v=${at(v, "id")}`,
+        caption: str(at(v, "title")),
+        publishedAt: isoFromString(at(v, dateKey)),
+        metrics: { views: num(at(v, "viewCountInt")) ?? 0, likes: 0, comments: 0, shares: null, saves: null },
+      });
+      return [...list(shorts.shorts).map((v) => toVideo(v, "publishDate")), ...list(videos.videos).map((v) => toVideo(v, "publishedTime"))];
+    }
+    case "facebook": {
+      const body = await getJson("/v1/facebook/profile/reels", { url: profileUrl });
+      return list(body.reels).map((v) => {
+        const url = str(at(v, "url")) ?? "";
+        return {
+          externalId: url.match(/\/reel\/(\d+)/)?.[1] ?? String(at(v, "id")),
+          url,
+          caption: str(at(v, "description")),
+          publishedAt: isoFromString(at(v, "creation_time")),
+          metrics: { views: num(at(v, "view_count")) ?? 0, likes: 0, comments: 0, shares: null, saves: null },
+        };
+      });
+    }
+  }
+}

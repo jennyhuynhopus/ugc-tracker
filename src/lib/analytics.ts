@@ -57,18 +57,38 @@ export function dayRange(n: number, now: number): string[] {
 
 /**
  * Per-video gains per day: each day's cumulative value minus the previous
- * known value (the day before, or the baseline from before the window). A
- * video's first-ever snapshot counts in full, since it covers views since
- * posting.
+ * known value (the day before, or the baseline from before the window).
+ *
+ * A video's first-ever snapshot covers everything since posting. When we know
+ * the post day and tracking started later (e.g. imported from a profile),
+ * those views are spread evenly from the post day to the first snapshot day,
+ * instead of all landing on the day tracking began.
  */
-export function dailyGains(rows: DailyRow[], baselines: Map<string, Baseline>) {
+export function dailyGains(rows: DailyRow[], baselines: Map<string, Baseline>, postedDays: Map<string, string> = new Map()) {
   const byVideo = new Map<string, DailyRow[]>();
   for (const r of rows) byVideo.set(r.videoId, [...(byVideo.get(r.videoId) ?? []), r]);
   const out: (Baseline & { videoId: string; day: string })[] = [];
   for (const [videoId, list] of byVideo) {
     list.sort((a, b) => a.day.localeCompare(b.day));
-    let prev = baselines.get(videoId) ?? { views: 0, likes: 0, comments: 0 };
-    for (const r of list) {
+    const baseline = baselines.get(videoId);
+    let prev = baseline ?? { views: 0, likes: 0, comments: 0 };
+    const postedDay = postedDays.get(videoId);
+    for (const [i, r] of list.entries()) {
+      if (i === 0 && !baseline && postedDay && postedDay < r.day) {
+        const days: string[] = [];
+        for (let t = Date.parse(`${postedDay}T00:00:00Z`); dayKey(t) <= r.day; t += DAY) days.push(dayKey(t));
+        for (const day of days) {
+          out.push({
+            videoId,
+            day,
+            views: r.views / days.length,
+            likes: r.likes / days.length,
+            comments: r.comments / days.length,
+          });
+        }
+        prev = r;
+        continue;
+      }
       out.push({
         videoId,
         day: r.day,
@@ -114,9 +134,11 @@ export function buildOverview(input: {
   const inCurrent = new Set(current);
   const inPrevious = new Set(previous);
 
+  const postedDays = new Map(videos.filter((v) => v.postedAt).map((v) => [v.id, dayKey(v.postedAt as string)]));
   const gains = dailyGains(
     input.rows.filter((r) => ids.has(r.videoId)),
     input.baselines,
+    postedDays,
   );
 
   const sum = (set: Set<string>, key: keyof Baseline) =>

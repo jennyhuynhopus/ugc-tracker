@@ -20,6 +20,7 @@ import {
 } from "@/lib/domain";
 import { startTracking } from "@/lib/poll";
 import { fetchProfile } from "@/lib/scrape";
+import { syncCreator } from "@/lib/sync";
 import { installScheduler, removeScheduler } from "@/lib/scheduler";
 import {
   deleteCreatorById,
@@ -29,6 +30,7 @@ import {
   getCreator,
   getVideo,
   insertCreator,
+  listCreators,
   updateCreator,
   insertVideo,
   recordSnapshot,
@@ -128,6 +130,8 @@ export async function addCreator(_prev: FormState, form: FormData): Promise<Form
     rateUsd: money(form, "rateUsd"),
     contractNotes: text(form, "contractNotes"),
   });
+  // Pull their recent videos right away so the page isn't empty.
+  if (process.env.SCRAPECREATORS_API_KEY && read.profiles.length) await syncCreator(id).catch(() => {});
   revalidatePath("/creators");
   revalidatePath("/");
   redirect(`/creators/${id}`);
@@ -144,6 +148,7 @@ export async function addCreatorLinks(creatorId: string, _prev: FormState, form:
   for (const p of read.profiles) handles[p.platform] = p.handle;
   const looked = await lookUpProfiles(read.profiles);
   await updateCreator(creatorId, { handles, followers: { ...creator.followers, ...looked.followers } });
+  if (process.env.SCRAPECREATORS_API_KEY) await syncCreator(creatorId).catch(() => {});
   revalidatePath(`/creators/${creatorId}`);
   revalidatePath("/creators");
   const notes = [...(replaced.length ? [`Replaced the previous ${replaced.join(", ")} link.`] : []), ...looked.problems];
@@ -169,6 +174,40 @@ export async function updateCreatorDetails(creatorId: string, _prev: FormState, 
   revalidatePath(`/creators/${creatorId}`);
   revalidatePath("/creators");
   return { error: null };
+}
+
+export interface SyncState {
+  error: string | null;
+  message: string | null;
+}
+
+export async function syncCreatorNow(creatorId: string): Promise<SyncState> {
+  if (!process.env.SCRAPECREATORS_API_KEY) return { error: "Add SCRAPECREATORS_API_KEY to pull videos automatically.", message: null };
+  const r = await syncCreator(creatorId);
+  revalidatePath(`/creators/${creatorId}`);
+  revalidatePath("/creators");
+  revalidatePath("/videos");
+  revalidatePath("/");
+  const message = `${r.added} new ${r.added === 1 ? "video" : "videos"}, ${r.updated} updated.`;
+  return { error: r.errors.length ? r.errors.join(" · ") : null, message };
+}
+
+export async function syncAllCreatorsNow(): Promise<SyncState> {
+  if (!process.env.SCRAPECREATORS_API_KEY) return { error: "Add SCRAPECREATORS_API_KEY to pull videos automatically.", message: null };
+  const ids = (await listCreators()).map((c) => c.id);
+  let added = 0;
+  let updated = 0;
+  const errors: string[] = [];
+  for (const id of ids) {
+    const r = await syncCreator(id);
+    added += r.added;
+    updated += r.updated;
+    errors.push(...r.errors);
+  }
+  revalidatePath("/creators");
+  revalidatePath("/videos");
+  revalidatePath("/");
+  return { error: errors.length ? errors.join(" · ") : null, message: `${added} new ${added === 1 ? "video" : "videos"}, ${updated} updated across ${ids.length} creators.` };
 }
 
 export async function deleteCreator(id: string): Promise<void> {

@@ -15,6 +15,8 @@ create table if not exists creators (
   created_at timestamptz not null default now()
 );
 alter table creators add column if not exists followers jsonb not null default '{}'::jsonb;
+alter table creators add column if not exists last_synced_at timestamptz;
+alter table creators add column if not exists sync_error text;
 
 create table if not exists videos (
   id uuid primary key default gen_random_uuid(),
@@ -73,7 +75,7 @@ create table if not exists digests (
 type Sql = ReturnType<typeof postgres>;
 
 // Bump when SCHEMA changes so a long-running process re-applies it.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const globalForDb = globalThis as unknown as { ugcSql?: Sql; ugcReady?: Promise<Sql> | null; ugcSchemaVersion?: number };
 

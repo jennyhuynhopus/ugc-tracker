@@ -3,9 +3,10 @@ import { notFound } from "next/navigation";
 import { PerformanceBadge, PipelineBadge } from "@/components/Badges";
 import { AddLinksForm, DeleteCreatorButton, EditCreatorForm, RemovePlatformButton } from "@/components/CreatorEdit";
 import { PlatformIcon } from "@/components/icons";
+import { SyncButton } from "@/components/SyncButton";
 import { listCreatorStats, listVideoRows } from "@/lib/data";
 import { PLATFORM_LABELS, PLATFORMS, parseProfileUrl } from "@/lib/domain";
-import { fmtNumber, fmtUsd } from "@/lib/format";
+import { fmtNumber, fmtRelative, fmtUsd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,16 @@ export default async function CreatorPage({ params }: { params: Promise<{ id: st
       <div className="grid-2">
         <div className="stack">
           <section className="card">
-            <div className="card-head"><h2>Platforms</h2><span className="muted small">{platforms.length} connected</span></div>
+            <div className="card-head">
+              <div>
+                <h2>Platforms</h2>
+                <div className="muted small">
+                  {c.lastSyncedAt ? `Videos pulled ${fmtRelative(c.lastSyncedAt)} · refreshes hourly` : "Videos not pulled yet"}
+                </div>
+              </div>
+              <SyncButton creatorId={c.id} />
+            </div>
+            {c.syncError && <p className="notice" style={{ margin: "12px 20px 0" }}>{c.syncError}</p>}
             {platforms.length === 0 && <p className="empty">No profiles yet. Add one on the right.</p>}
             {platforms.map((p) => {
               const handle = c.handles[p] as string;
