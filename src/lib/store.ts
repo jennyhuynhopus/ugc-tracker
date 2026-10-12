@@ -27,6 +27,7 @@ function toCreator(r: Row): Creator {
     handles: (r.handles as Creator["handles"]) ?? {},
     rateUsd: (r.rateUsd as number | null) ?? null,
     contractNotes: (r.contractNotes as string) ?? "",
+    followers: (r.followers as Creator["followers"]) ?? {},
     createdAt: iso(r.createdAt as Date) as string,
   };
 }
@@ -103,8 +104,19 @@ export async function getCreator(id: string): Promise<Creator | null> {
 export async function insertCreator(c: Omit<Creator, "id" | "createdAt">): Promise<void> {
   const sql = await db();
   await sql`
-    insert into creators (name, handles, rate_usd, contract_notes)
-    values (${c.name}, ${sql.json(asJson(c.handles))}, ${c.rateUsd}, ${c.contractNotes})`;
+    insert into creators (name, handles, followers, rate_usd, contract_notes)
+    values (${c.name}, ${sql.json(asJson(c.handles))}, ${sql.json(asJson(c.followers))}, ${c.rateUsd}, ${c.contractNotes})`;
+}
+
+export async function findCreatorByHandle(platform: Platform, handle: string): Promise<Creator | null> {
+  const sql = await db();
+  const [r] = await sql`select * from creators where lower(handles ->> ${platform}) = lower(${handle}) limit 1`;
+  return r ? toCreator(r) : null;
+}
+
+export async function deleteCreatorById(id: string): Promise<void> {
+  const sql = await db();
+  await sql`delete from creators where id = ${id}`;
 }
 
 // ── Videos ───────────────────────────────────────────────────────────────────

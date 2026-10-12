@@ -205,3 +205,40 @@ async function fetchScrapeCreators(platform: Platform, url: string): Promise<Fet
   }
   return parse(platform, body);
 }
+
+// ── Creator profiles ─────────────────────────────────────────────────────────
+
+export interface FetchedProfile {
+  name: string | null;
+  followers: number | null;
+}
+
+/** Display name + follower count for a profile. Costs one ScrapeCreators credit. */
+export async function fetchProfile(platform: Platform, handle: string, url: string): Promise<FetchedProfile> {
+  const apiKey = process.env.SCRAPECREATORS_API_KEY;
+  if (!apiKey) throw new PermanentScrapeError("SCRAPECREATORS_API_KEY isn't set.");
+  const endpoint = new URL(
+    { tiktok: "/v1/tiktok/profile", instagram: "/v1/instagram/profile", youtube: "/v1/youtube/channel", facebook: "/v1/facebook/profile" }[platform],
+    BASE_URL,
+  );
+  if (platform === "tiktok" || platform === "instagram") endpoint.searchParams.set("handle", handle);
+  else if (platform === "youtube") {
+    if (/^UC[\w-]{10,}$/.test(handle)) endpoint.searchParams.set("channelId", handle);
+    else endpoint.searchParams.set("handle", handle);
+  } else endpoint.searchParams.set("url", url);
+
+  const res = await fetch(endpoint, { headers: { "x-api-key": apiKey }, signal: AbortSignal.timeout(30_000) });
+  if (res.status === 402) throw new PermanentScrapeError("ScrapeCreators is out of credits.");
+  if (!res.ok) throw new PermanentScrapeError(`Couldn't find that profile (HTTP ${res.status}).`);
+  const body = (await res.json()) as Json;
+  switch (platform) {
+    case "tiktok":
+      return { name: str(at(body, "user.nickname")), followers: num(at(body, "stats.followerCount")) };
+    case "instagram":
+      return { name: str(at(body, "data.user.full_name")), followers: num(at(body, "data.user.edge_followed_by.count")) };
+    case "youtube":
+      return { name: str(body.name), followers: num(body.subscriberCount) };
+    case "facebook":
+      return { name: str(body.name), followers: num(body.followerCount) };
+  }
+}

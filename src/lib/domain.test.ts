@@ -6,6 +6,7 @@ import {
   deriveMetrics,
   parseBulkStats,
   parseCount,
+  parseProfileUrl,
   parseVideoUrl,
   pollDelayMs,
   trailingVelocity,
@@ -132,4 +133,23 @@ test("parseBulkStats parses tab and comma rows, skips header, reports bad rows",
   assert.equal(rows[2].ok, false);
   assert.equal(rows[3].ok, false);
   assert.equal(rows[3].line, 5);
+});
+
+test("parseProfileUrl reads profile links and bare handles", () => {
+  const p = (s: string, f: Parameters<typeof parseProfileUrl>[1] = null) => {
+    const r = parseProfileUrl(s, f);
+    return r && [r.platform, r.handle];
+  };
+  assert.deepEqual(p("https://www.tiktok.com/@maya.makes?lang=en"), ["tiktok", "maya.makes"]);
+  assert.deepEqual(p("tiktok.com/@maya"), ["tiktok", "maya"]);
+  assert.deepEqual(p("https://www.instagram.com/leo.edits/"), ["instagram", "leo.edits"]);
+  assert.deepEqual(p("https://www.youtube.com/@AvaBrooks"), ["youtube", "AvaBrooks"]);
+  assert.deepEqual(p("https://youtube.com/channel/UC123abc"), ["youtube", "UC123abc"]);
+  assert.deepEqual(p("https://www.facebook.com/noraali"), ["facebook", "noraali"]);
+  assert.deepEqual(p("https://www.facebook.com/profile.php?id=1000123"), ["facebook", "1000123"]);
+  assert.deepEqual(p("@samclips", "tiktok"), ["tiktok", "samclips"]);
+  assert.equal(p("@samclips"), null); // bare handle needs a platform
+  assert.equal(p("https://www.instagram.com/reel/C1a2B3/"), null); // a post, not a profile
+  assert.equal(p("https://www.tiktok.com/@maya/video/123")?.[1], "maya");
+  assert.equal(p("https://vimeo.com/someone"), null);
 });

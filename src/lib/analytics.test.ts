@@ -15,7 +15,7 @@ function video(id: string, creatorId: string, postedAt: string, platform: Video[
   };
 }
 
-const creator = (id: string, name: string): Creator => ({ id, name, handles: {}, rateUsd: null, contractNotes: "", createdAt: "" });
+const creator = (id: string, name: string): Creator => ({ id, name, handles: {}, followers: {}, rateUsd: null, contractNotes: "", createdAt: "" });
 const row = (videoId: string, day: string, views: number, likes = 0, comments = 0): DailyRow => ({ videoId, day, views, likes, comments });
 
 test("dayRange ends today, oldest first", () => {

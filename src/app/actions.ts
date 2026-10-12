@@ -9,15 +9,21 @@ import {
   canTransition,
   PIPELINE_LABELS,
   PIPELINE_STATES,
+  PLATFORM_LABELS,
   type PipelineState,
   PLATFORMS,
+  type Platform,
   parseBulkStats,
+  parseProfileUrl,
   parseVideoUrl,
 } from "@/lib/domain";
 import { startTracking } from "@/lib/poll";
+import { fetchProfile } from "@/lib/scrape";
 import { installScheduler, removeScheduler } from "@/lib/scheduler";
 import {
+  deleteCreatorById,
   deleteVideoById,
+  findCreatorByHandle,
   findVideoByUrl,
   getCreator,
   getVideo,
@@ -62,17 +68,76 @@ async function tryStartTracking(videoId: string): Promise<void> {
 
 // ── Creators ─────────────────────────────────────────────────────────────────
 
-export async function createCreator(_prev: FormState, form: FormData): Promise<FormState> {
-  const name = text(form, "name");
-  if (!name) return { error: "Add a name." };
-  const handles: Creator["handles"] = {};
-  for (const p of PLATFORMS) {
-    const h = text(form, `handle_${p}`).replace(/^@/, "");
-    if (h) handles[p] = h;
+export interface AddCreatorsResult {
+  error: string | null;
+  added: { name: string; detail: string }[];
+  skipped: { line: string; reason: string }[];
+}
+
+/**
+ * Add creators from pasted profile links: one creator per line, several
+ * links on a line when they're the same person on different platforms. Name
+ * and followers come from the profile when a ScrapeCreators key is set.
+ */
+export async function addCreators(_prev: AddCreatorsResult, form: FormData): Promise<AddCreatorsResult> {
+  const lines = text(form, "links").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const fallback = PLATFORMS.includes(text(form, "platform") as Platform) ? (text(form, "platform") as Platform) : null;
+  const rateUsd = money(form, "rateUsd");
+  if (lines.length === 0) return { error: "Paste at least one profile link.", added: [], skipped: [] };
+
+  const result: AddCreatorsResult = { error: null, added: [], skipped: [] };
+  for (const line of lines) {
+    const profiles = line
+      .split(/[\s,]+/)
+      .map((w) => parseProfileUrl(w, fallback))
+      .filter((p): p is NonNullable<typeof p> => p != null);
+    if (profiles.length === 0) {
+      result.skipped.push({
+        line,
+        reason: line.trim().startsWith("@") && !fallback
+          ? "Pick a platform for bare @handles, or paste the full profile link."
+          : "Not a TikTok, Instagram, YouTube or Facebook profile link.",
+      });
+      continue;
+    }
+    const dupe = await findCreatorByHandle(profiles[0].platform, profiles[0].handle);
+    if (dupe) {
+      result.skipped.push({ line, reason: `Already added as ${dupe.name}.` });
+      continue;
+    }
+
+    const handles: Creator["handles"] = {};
+    const followers: Creator["followers"] = {};
+    let name: string | null = null;
+    let lookupNote = "";
+    for (const p of profiles) {
+      handles[p.platform] = p.handle;
+      if (!process.env.SCRAPECREATORS_API_KEY) continue;
+      try {
+        const info = await fetchProfile(p.platform, p.handle, p.url);
+        name ??= info.name;
+        if (info.followers != null) followers[p.platform] = info.followers;
+      } catch (err) {
+        lookupNote = ` (couldn't read ${PLATFORM_LABELS[p.platform]} profile: ${err instanceof Error ? err.message : String(err)})`;
+      }
+    }
+    name ??= `@${profiles[0].handle}`;
+    await insertCreator({ name, handles, followers, rateUsd, contractNotes: "" });
+    const totalFollowers = Object.values(followers).reduce((a, b) => a + (b ?? 0), 0);
+    result.added.push({
+      name,
+      detail: `${profiles.map((p) => `${PLATFORM_LABELS[p.platform]} @${p.handle}`).join(", ")}${totalFollowers ? ` · ${new Intl.NumberFormat("en-US", { notation: "compact" }).format(totalFollowers)} followers` : ""}${lookupNote}`,
+    });
   }
-  await insertCreator({ name, handles, rateUsd: money(form, "rateUsd"), contractNotes: text(form, "contractNotes") });
   revalidatePath("/creators");
-  return { error: null };
+  revalidatePath("/");
+  return result;
+}
+
+export async function deleteCreator(id: string): Promise<void> {
+  await deleteCreatorById(id);
+  revalidatePath("/creators");
+  revalidatePath("/");
 }
 
 // ── Videos ───────────────────────────────────────────────────────────────────

@@ -141,6 +141,8 @@ export interface Creator {
   /** Default rate per video, in USD — prefilled as a new video's cost. */
   rateUsd: number | null;
   contractNotes: string;
+  /** Follower/subscriber counts per platform, from the profile at add time. */
+  followers: Partial<Record<Platform, number>>;
   createdAt: string;
 }
 
@@ -381,4 +383,73 @@ export function parseBulkStats(text: string): BulkLine[] {
     });
   });
   return out;
+}
+
+// ── Creator profile links ────────────────────────────────────────────────────
+
+export interface ParsedProfile {
+  platform: Platform;
+  /** Handle without "@" (YouTube: the @handle, or a channel id starting with "UC"). */
+  handle: string;
+  url: string;
+}
+
+const RESERVED_PATHS = new Set(["p", "reel", "reels", "tv", "explore", "stories", "watch", "shorts", "video", "videos", "share", "groups", "profile.php"]);
+
+/**
+ * Read a creator profile from a pasted link (tiktok.com/@maya,
+ * instagram.com/maya, youtube.com/@maya, facebook.com/maya) or a bare
+ * "@handle" when `fallbackPlatform` says which platform it's on.
+ */
+export function parseProfileUrl(raw: string, fallbackPlatform: Platform | null = null): ParsedProfile | null {
+  const input = raw.trim().replace(/[),.;]+$/, "");
+  if (!input) return null;
+
+  const bare = /^@?([A-Za-z0-9._-]{2,64})$/.exec(input);
+  if (bare && (input.startsWith("@") || !input.includes("."))) {
+    if (!fallbackPlatform) return null;
+    const handle = bare[1];
+    const urls: Record<Platform, string> = {
+      tiktok: `https://www.tiktok.com/@${handle}`,
+      instagram: `https://www.instagram.com/${handle}/`,
+      youtube: `https://www.youtube.com/@${handle}`,
+      facebook: `https://www.facebook.com/${handle}`,
+    };
+    return { platform: fallbackPlatform, handle, url: urls[fallbackPlatform] };
+  }
+
+  let u: URL;
+  try {
+    u = new URL(/^https?:\/\//i.test(input) ? input : `https://${input}`);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.replace(/^(www\.|m\.|mobile\.)/, "");
+  const parts = u.pathname.split("/").filter(Boolean);
+  const first = parts[0] ?? "";
+
+  if (host === "tiktok.com" || host.endsWith(".tiktok.com")) {
+    if (!first.startsWith("@") || first.length < 2) return null;
+    const handle = first.slice(1);
+    return { platform: "tiktok", handle, url: `https://www.tiktok.com/@${handle}` };
+  }
+  if (host === "instagram.com") {
+    if (!first || RESERVED_PATHS.has(first)) return null;
+    return { platform: "instagram", handle: first, url: `https://www.instagram.com/${first}/` };
+  }
+  if (host === "youtube.com") {
+    if (first.startsWith("@") && first.length > 1) {
+      return { platform: "youtube", handle: first.slice(1), url: `https://www.youtube.com/${first}` };
+    }
+    if ((first === "channel" || first === "c" || first === "user") && parts[1]) {
+      return { platform: "youtube", handle: parts[1], url: `https://www.youtube.com/${first}/${parts[1]}` };
+    }
+    return null;
+  }
+  if (host === "facebook.com" || host === "fb.com") {
+    const id = first === "profile.php" ? u.searchParams.get("id") : first;
+    if (!id || (first !== "profile.php" && RESERVED_PATHS.has(first))) return null;
+    return { platform: "facebook", handle: id, url: first === "profile.php" ? `https://www.facebook.com/profile.php?id=${id}` : `https://www.facebook.com/${id}` };
+  }
+  return null;
 }

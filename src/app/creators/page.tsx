@@ -1,5 +1,6 @@
 import { PLATFORM_LABELS, type Platform } from "@/lib/domain";
 import { CreatorForm } from "@/components/CreatorForm";
+import { DeleteCreatorButton } from "@/components/DeleteCreatorButton";
 import { listCreatorStats } from "@/lib/data";
 import { fmtNumber, fmtUsd } from "@/lib/format";
 
@@ -23,7 +24,7 @@ export default async function CreatorsPage() {
           {ranked.length === 0 ? (
             <div className="empty">
               <h3>No creators yet</h3>
-              <p>Add your first creator to start tracking their videos.</p>
+              <p>Paste their profile links on the right to add them.</p>
             </div>
           ) : (
             <table>
@@ -36,6 +37,7 @@ export default async function CreatorsPage() {
                   <th className="num">Spend</th>
                   <th className="num">CPM</th>
                   <th className="num">Brief → post</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -49,7 +51,10 @@ export default async function CreatorsPage() {
                     </td>
                     <td className="muted small">
                       {Object.entries(s.creator.handles)
-                        .map(([p, h]) => `${PLATFORM_LABELS[p as Platform]} @${h}`)
+                        .map(([p, h]) => {
+                          const f = s.creator.followers[p as Platform];
+                          return `${PLATFORM_LABELS[p as Platform]} @${h}${f != null ? ` (${fmtNumber(f)})` : ""}`;
+                        })
                         .join(" · ") || "—"}
                     </td>
                     <td className="num">
@@ -65,6 +70,7 @@ export default async function CreatorsPage() {
                     <td className="num">{fmtUsd(s.spendUsd)}</td>
                     <td className="num">{fmtUsd(s.cpm)}</td>
                     <td className="num">{s.avgTurnaroundDays == null ? "—" : `${s.avgTurnaroundDays.toFixed(1)}d`}</td>
+                    <td><DeleteCreatorButton id={s.creator.id} name={s.creator.name} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -73,7 +79,7 @@ export default async function CreatorsPage() {
         </div>
 
         <section className="card card-pad">
-          <h2>Add creator</h2>
+          <h2>Add creators</h2>
           <CreatorForm />
         </section>
       </div>

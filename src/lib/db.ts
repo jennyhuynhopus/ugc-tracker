@@ -14,6 +14,7 @@ create table if not exists creators (
   contract_notes text not null default '',
   created_at timestamptz not null default now()
 );
+alter table creators add column if not exists followers jsonb not null default '{}'::jsonb;
 
 create table if not exists videos (
   id uuid primary key default gen_random_uuid(),
@@ -71,7 +72,10 @@ create table if not exists digests (
 
 type Sql = ReturnType<typeof postgres>;
 
-const globalForDb = globalThis as unknown as { ugcSql?: Sql; ugcReady?: Promise<Sql> | null };
+// Bump when SCHEMA changes so a long-running process re-applies it.
+const SCHEMA_VERSION = 2;
+
+const globalForDb = globalThis as unknown as { ugcSql?: Sql; ugcReady?: Promise<Sql> | null; ugcSchemaVersion?: number };
 
 function client(): Sql {
   const url = process.env.DATABASE_URL;
@@ -80,6 +84,8 @@ function client(): Sql {
     // Supabase's pooler (port 6543) runs in transaction mode, which can't hold
     // prepared statements across requests.
     prepare: false,
+    // "already exists, skipping" notices from the idempotent schema are noise.
+    onnotice: () => {},
     // Override only for single-session test databases (e.g. PGlite): DATABASE_POOL_MAX=1.
     max: Number(process.env.DATABASE_POOL_MAX) || 5,
     idle_timeout: 20,
@@ -94,6 +100,10 @@ function client(): Sql {
 
 /** The ready-to-use client. Runs the idempotent schema once per process. */
 export function db(): Promise<Sql> {
+  if (globalForDb.ugcSchemaVersion !== SCHEMA_VERSION) {
+    globalForDb.ugcReady = null;
+    globalForDb.ugcSchemaVersion = SCHEMA_VERSION;
+  }
   globalForDb.ugcReady ??= (async () => {
     const sql = client();
     await sql.unsafe(SCHEMA);

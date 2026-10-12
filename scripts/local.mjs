@@ -45,6 +45,9 @@ const app = spawn("npx", ["next", "dev", "-p", String(APP_PORT)], {
     DATABASE_URL: `postgres://postgres:postgres@127.0.0.1:${DB_PORT}/postgres`,
     // PGlite is a single session: one connection keeps queries from interleaving.
     DATABASE_POOL_MAX: "1",
+    // Trust the Mac's certificate store too, so HTTPS works behind company
+    // VPNs that inspect traffic (otherwise: SELF_SIGNED_CERT_IN_CHAIN).
+    NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --use-system-ca`.trim(),
   },
 });
 
