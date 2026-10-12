@@ -1,6 +1,6 @@
 {
   "name": "UGC Tracker",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-24-bookworm",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24-bookworm",
   "hostRequirements": { "cpus": 2 },
   "postCreateCommand": "npm ci",
   "postAttachCommand": { "site": "npm run local" },
