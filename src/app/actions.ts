@@ -14,6 +14,7 @@ import {
   PLATFORMS,
   type Platform,
   parseBulkStats,
+  type ParsedProfile,
   parseProfileUrl,
   parseVideoUrl,
 } from "@/lib/domain";
@@ -28,6 +29,7 @@ import {
   getCreator,
   getVideo,
   insertCreator,
+  updateCreator,
   insertVideo,
   recordSnapshot,
   setPollStatus,
@@ -68,76 +70,112 @@ async function tryStartTracking(videoId: string): Promise<void> {
 
 // ── Creators ─────────────────────────────────────────────────────────────────
 
-export interface AddCreatorsResult {
-  error: string | null;
-  added: { name: string; detail: string }[];
-  skipped: { line: string; reason: string }[];
+/** Look up name + followers for each profile (when a ScrapeCreators key is set). */
+async function lookUpProfiles(profiles: ParsedProfile[]) {
+  const followers: Creator["followers"] = {};
+  let name: string | null = null;
+  const problems: string[] = [];
+  if (!process.env.SCRAPECREATORS_API_KEY) return { followers, name, problems };
+  for (const p of profiles) {
+    if (!p) continue;
+    try {
+      const info = await fetchProfile(p.platform, p.handle, p.url);
+      name ??= info.name;
+      if (info.followers != null) followers[p.platform] = info.followers;
+    } catch (err) {
+      problems.push(`Couldn't read the ${PLATFORM_LABELS[p.platform]} profile (${err instanceof Error ? err.message : String(err)}).`);
+    }
+  }
+  return { followers, name, problems };
 }
 
 /**
- * Add creators from pasted profile links: one creator per line, several
- * links on a line when they're the same person on different platforms. Name
- * and followers come from the profile when a ScrapeCreators key is set.
+ * Read profile links (one per line, or separated by spaces/commas) into one
+ * handle per platform. Errors name the offending line.
  */
-export async function addCreators(_prev: AddCreatorsResult, form: FormData): Promise<AddCreatorsResult> {
-  const lines = text(form, "links").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const fallback = PLATFORMS.includes(text(form, "platform") as Platform) ? (text(form, "platform") as Platform) : null;
-  const rateUsd = money(form, "rateUsd");
-  if (lines.length === 0) return { error: "Paste at least one profile link.", added: [], skipped: [] };
-
-  const result: AddCreatorsResult = { error: null, added: [], skipped: [] };
-  for (const line of lines) {
-    const profiles = line
-      .split(/[\s,]+/)
-      .map((w) => parseProfileUrl(w, fallback))
-      .filter((p): p is NonNullable<typeof p> => p != null);
-    if (profiles.length === 0) {
-      result.skipped.push({
-        line,
-        reason: line.trim().startsWith("@") && !fallback
-          ? "Pick a platform for bare @handles, or paste the full profile link."
-          : "Not a TikTok, Instagram, YouTube or Facebook profile link.",
-      });
-      continue;
+async function readProfileLinks(raw: string, creatorId: string | null) {
+  const words = raw.split(/[\s,]+/).map((w) => w.trim()).filter(Boolean);
+  const profiles: ParsedProfile[] = [];
+  for (const w of words) {
+    const p = parseProfileUrl(w);
+    if (!p) return { error: `"${w.slice(0, 60)}" isn't a TikTok, Instagram, YouTube or Facebook profile link.` };
+    if (profiles.some((x) => x.platform === p.platform)) {
+      return { error: `Two ${PLATFORM_LABELS[p.platform]} links. A creator has one profile per platform.` };
     }
-    const dupe = await findCreatorByHandle(profiles[0].platform, profiles[0].handle);
-    if (dupe) {
-      result.skipped.push({ line, reason: `Already added as ${dupe.name}.` });
-      continue;
+    const owner = await findCreatorByHandle(p.platform, p.handle);
+    if (owner && owner.id !== creatorId) {
+      return { error: `${PLATFORM_LABELS[p.platform]} @${p.handle} already belongs to ${owner.name}.` };
     }
-
-    const handles: Creator["handles"] = {};
-    const followers: Creator["followers"] = {};
-    let name: string | null = null;
-    let lookupNote = "";
-    for (const p of profiles) {
-      handles[p.platform] = p.handle;
-      if (!process.env.SCRAPECREATORS_API_KEY) continue;
-      try {
-        const info = await fetchProfile(p.platform, p.handle, p.url);
-        name ??= info.name;
-        if (info.followers != null) followers[p.platform] = info.followers;
-      } catch (err) {
-        lookupNote = ` (couldn't read ${PLATFORM_LABELS[p.platform]} profile: ${err instanceof Error ? err.message : String(err)})`;
-      }
-    }
-    name ??= `@${profiles[0].handle}`;
-    await insertCreator({ name, handles, followers, rateUsd, contractNotes: "" });
-    const totalFollowers = Object.values(followers).reduce((a, b) => a + (b ?? 0), 0);
-    result.added.push({
-      name,
-      detail: `${profiles.map((p) => `${PLATFORM_LABELS[p.platform]} @${p.handle}`).join(", ")}${totalFollowers ? ` · ${new Intl.NumberFormat("en-US", { notation: "compact" }).format(totalFollowers)} followers` : ""}${lookupNote}`,
-    });
+    profiles.push(p);
   }
+  return { profiles };
+}
+
+export async function addCreator(_prev: FormState, form: FormData): Promise<FormState> {
+  const read = await readProfileLinks(text(form, "links"), null);
+  if ("error" in read) return { error: read.error ?? null };
+  const typedName = text(form, "name");
+  if (!typedName && read.profiles.length === 0) return { error: "Add a name or at least one profile link." };
+
+  const handles: Creator["handles"] = {};
+  for (const p of read.profiles) handles[p.platform] = p.handle;
+  const looked = await lookUpProfiles(read.profiles);
+  const name = typedName || looked.name || `@${read.profiles[0].handle}`;
+  const id = await insertCreator({
+    name,
+    handles,
+    followers: looked.followers,
+    rateUsd: money(form, "rateUsd"),
+    contractNotes: text(form, "contractNotes"),
+  });
   revalidatePath("/creators");
   revalidatePath("/");
-  return result;
+  redirect(`/creators/${id}`);
+}
+
+export async function addCreatorLinks(creatorId: string, _prev: FormState, form: FormData): Promise<FormState> {
+  const creator = await getCreator(creatorId);
+  if (!creator) return { error: "Creator not found." };
+  const read = await readProfileLinks(text(form, "links"), creatorId);
+  if ("error" in read) return { error: read.error ?? null };
+  if (read.profiles.length === 0) return { error: "Paste a profile link." };
+  const replaced = read.profiles.filter((p) => creator.handles[p.platform]).map((p) => PLATFORM_LABELS[p.platform]);
+  const handles = { ...creator.handles };
+  for (const p of read.profiles) handles[p.platform] = p.handle;
+  const looked = await lookUpProfiles(read.profiles);
+  await updateCreator(creatorId, { handles, followers: { ...creator.followers, ...looked.followers } });
+  revalidatePath(`/creators/${creatorId}`);
+  revalidatePath("/creators");
+  const notes = [...(replaced.length ? [`Replaced the previous ${replaced.join(", ")} link.`] : []), ...looked.problems];
+  return { error: notes.length ? notes.join(" ") : null };
+}
+
+export async function removeCreatorPlatform(creatorId: string, platform: Platform): Promise<void> {
+  const creator = await getCreator(creatorId);
+  if (!creator) return;
+  const handles = { ...creator.handles };
+  const followers = { ...creator.followers };
+  delete handles[platform];
+  delete followers[platform];
+  await updateCreator(creatorId, { handles, followers });
+  revalidatePath(`/creators/${creatorId}`);
+  revalidatePath("/creators");
+}
+
+export async function updateCreatorDetails(creatorId: string, _prev: FormState, form: FormData): Promise<FormState> {
+  const name = text(form, "name");
+  if (!name) return { error: "Name can't be empty." };
+  await updateCreator(creatorId, { name, rateUsd: money(form, "rateUsd"), contractNotes: text(form, "contractNotes") });
+  revalidatePath(`/creators/${creatorId}`);
+  revalidatePath("/creators");
+  return { error: null };
 }
 
 export async function deleteCreator(id: string): Promise<void> {
   await deleteCreatorById(id);
   revalidatePath("/creators");
   revalidatePath("/");
+  redirect("/creators");
 }
 
 // ── Videos ───────────────────────────────────────────────────────────────────

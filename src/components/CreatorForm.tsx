@@ -1,69 +1,77 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
-import { type AddCreatorsResult, addCreators } from "@/app/actions";
-import { PLATFORM_LABELS, PLATFORMS } from "@/lib/domain";
+import { useActionState, useState } from "react";
+import { addCreator, type FormState } from "@/app/actions";
+import { PLATFORM_LABELS, parseProfileUrl } from "@/lib/domain";
+import { PlatformIcon } from "./icons";
 
 const PLACEHOLDER = `https://www.tiktok.com/@mayamakes
-https://www.instagram.com/leo.edits/  https://www.tiktok.com/@leoedits
-https://www.youtube.com/@avabrooks`;
+https://www.instagram.com/maya.makes/
+https://www.youtube.com/@mayamakes`;
+
+/** Live preview of which platform each pasted link belongs to. */
+export function DetectedLinks({ value }: { value: string }) {
+  const words = value.split(/[\s,]+/).filter(Boolean);
+  if (words.length === 0) return null;
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      {words.map((w, i) => {
+        const p = parseProfileUrl(w);
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: preview rows follow input order
+          <div key={i} className="small" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {p ? (
+              <>
+                <span style={{ width: 16, height: 16, display: "inline-flex" }}><PlatformIcon platform={p.platform} /></span>
+                <strong>{PLATFORM_LABELS[p.platform]}</strong> <span className="muted">@{p.handle}</span>
+              </>
+            ) : (
+              <span className="form-error">Not a profile link: {w.slice(0, 50)}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function CreatorForm() {
-  const [state, action, pending] = useActionState<AddCreatorsResult, FormData>(addCreators, {
-    error: null,
-    added: [],
-    skipped: [],
-  });
-  const ref = useRef<HTMLFormElement>(null);
-  useEffect(() => {
-    if (state.added.length && !state.skipped.length) ref.current?.reset();
-  }, [state]);
-
+  const [state, action, pending] = useActionState<FormState, FormData>(addCreator, { error: null });
+  const [links, setLinks] = useState("");
   return (
-    <form ref={ref} action={action} className="form">
+    <form action={action} className="form">
+      <label className="field">
+        Creator name
+        <input name="name" placeholder="Maya Chen" />
+        <span className="hint">Leave blank to use the name from their profile.</span>
+      </label>
       <label className="field">
         Profile links
-        <span className="hint">
-          One creator per line. Same creator on several platforms? Put their links on one line. We fill in the name and
-          follower count from the profile.
-        </span>
-        <textarea name="links" rows={6} placeholder={PLACEHOLDER} style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }} required />
+        <span className="hint">One link per line, one for each platform they're on.</span>
+        <textarea
+          name="links"
+          rows={4}
+          value={links}
+          onChange={(e) => setLinks(e.target.value)}
+          placeholder={PLACEHOLDER}
+          style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+        />
       </label>
-      <div className="form-row">
-        <label className="field">
-          Platform for @handles
-          <select name="platform" defaultValue="">
-            <option value="">Links only</option>
-            {PLATFORMS.map((p) => (
-              <option key={p} value={p}>{PLATFORM_LABELS[p]}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          Rate per video (USD)
-          <input name="rateUsd" inputMode="decimal" placeholder="Optional" />
-        </label>
-      </div>
+      <DetectedLinks value={links} />
+      <label className="field">
+        Rate per video (USD)
+        <input name="rateUsd" inputMode="decimal" placeholder="Optional" />
+      </label>
+      <label className="field">
+        Notes
+        <textarea name="contractNotes" rows={2} placeholder="Usage rights, deliverables… (optional)" />
+      </label>
       {state.error && <p className="form-error">{state.error}</p>}
       <div>
         <button type="submit" className="btn btn-primary" disabled={pending}>
-          {pending ? "Looking up profiles…" : "Add creators"}
+          {pending ? "Looking up profiles…" : "Add creator"}
         </button>
       </div>
-      {(state.added.length > 0 || state.skipped.length > 0) && (
-        <div className="stack" style={{ gap: 6 }}>
-          {state.added.map((a) => (
-            <div key={a.name + a.detail} className="small">
-              <span className="badge green">Added</span> <strong>{a.name}</strong> <span className="muted">{a.detail}</span>
-            </div>
-          ))}
-          {state.skipped.map((s) => (
-            <div key={s.line} className="small">
-              <span className="badge amber">Skipped</span> <span className="muted">{s.line.slice(0, 60)}: {s.reason}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </form>
   );
 }

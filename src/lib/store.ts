@@ -101,17 +101,30 @@ export async function getCreator(id: string): Promise<Creator | null> {
   return r ? toCreator(r) : null;
 }
 
-export async function insertCreator(c: Omit<Creator, "id" | "createdAt">): Promise<void> {
+export async function insertCreator(c: Omit<Creator, "id" | "createdAt">): Promise<string> {
   const sql = await db();
-  await sql`
+  const [r] = await sql`
     insert into creators (name, handles, followers, rate_usd, contract_notes)
-    values (${c.name}, ${sql.json(asJson(c.handles))}, ${sql.json(asJson(c.followers))}, ${c.rateUsd}, ${c.contractNotes})`;
+    values (${c.name}, ${sql.json(asJson(c.handles))}, ${sql.json(asJson(c.followers))}, ${c.rateUsd}, ${c.contractNotes})
+    returning id`;
+  return r.id as string;
 }
 
 export async function findCreatorByHandle(platform: Platform, handle: string): Promise<Creator | null> {
   const sql = await db();
   const [r] = await sql`select * from creators where lower(handles ->> ${platform}) = lower(${handle}) limit 1`;
   return r ? toCreator(r) : null;
+}
+
+export async function updateCreator(
+  id: string,
+  f: Partial<Pick<Creator, "name" | "handles" | "followers" | "rateUsd" | "contractNotes">>,
+): Promise<void> {
+  const sql = await db();
+  const cols: Row = { ...f };
+  if (f.handles) cols.handles = sql.json(asJson(f.handles));
+  if (f.followers) cols.followers = sql.json(asJson(f.followers));
+  await sql`update creators set ${sql(cols)} where id = ${id}`;
 }
 
 export async function deleteCreatorById(id: string): Promise<void> {
