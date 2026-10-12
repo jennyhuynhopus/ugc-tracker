@@ -8,6 +8,7 @@ and get a weekly digest.
   TikTok, Instagram and Facebook use ScrapeCreators; YouTube uses ScrapeCreators or the free YouTube Data API.
 - **Performance labels:** Warming up, Breaking out (1.5× your team's median first-day views/hour), Steady, Stalled.
 - **Metrics:** views/hour, engagement, share and save rates, cost per 1K views (CPM), and creators ranked by CPM.
+- **Creators by profile link:** add a creator with one link per platform; their videos from the last 30 days are pulled in and refreshed hourly.
 - **No key needed to start:** log stats per video, or paste rows from a spreadsheet.
 - **Weekly digest (Mondays 9am PT):** AI-written with a Claude key; otherwise built from the numbers.
 
@@ -24,15 +25,16 @@ Stack: Next.js on Vercel, Postgres (Supabase), Supabase `pg_cron` for the 15-min
 3. **Turn on automatic checks:** open the live site, go to **Settings**, and click **Turn on automatic checks**.
    This installs the 15-minute schedule in Supabase. (Vercel also runs a daily backup check on its free plan.)
 
-## Run locally
+## Run locally (one command)
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill in DATABASE_URL at minimum
-npm run dev
+npm run local        # → http://localhost:3200
 ```
 
-Without `APP_PASSWORD` the app is open, which is fine on your own machine.
+This starts an embedded Postgres saved in `.localdb/`, the site, and the 15-minute stats check.
+Put `SCRAPECREATORS_API_KEY=...` in `.env.local` (gitignored) to pull stats automatically.
+No password is needed locally.
 
 ## Checks
 
