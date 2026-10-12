@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "test": "node --test --experimental-strip-types src/lib/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "local": "node scripts/local.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -23,6 +24,8 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.9",
+    "@electric-sql/pglite-socket": "^0.2.12",
     "@types/node": "^24.19.2",
     "@types/react": "19.2",
     "@types/react-dom": "19.2",
