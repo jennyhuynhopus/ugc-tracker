@@ -9,7 +9,8 @@
     "start": "next start",
     "test": "node --test --experimental-strip-types src/lib/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "local": "node scripts/local.mjs"
+    "local": "node scripts/local.mjs",
+    "export-creators": "node scripts/export-creators.mjs"
   },
   "engines": {
     "node": ">=20"
