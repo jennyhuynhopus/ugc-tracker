@@ -34,6 +34,7 @@ npm run local        # → http://localhost:3200
 
 This starts an embedded Postgres saved in `.localdb/`, the site, and the 15-minute stats check.
 Put `SCRAPECREATORS_API_KEY=...` in `.env.local` (gitignored) to pull stats automatically.
+A fresh database starts with the creators in [`data/creators.json`](data/creators.json); their last 30 days of videos are pulled on the first stats check.
 No password is needed locally.
 
 ## Checks

@@ -7,8 +7,10 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { PGlite } from "@electric-sql/pglite";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
+import postgres from "postgres";
 
-const DB_PORT = 55433;
+const DB_PORT = Number(process.env.LOCAL_DB_PORT) || 55433;
+const DB_DIR = process.env.LOCAL_DB_DIR || "./.localdb";
 const APP_PORT = Number(process.env.PORT) || 3200;
 const TICK_MS = 15 * 60 * 1000;
 
@@ -33,10 +35,10 @@ if (!(await portFree(DB_PORT))) {
   process.exit(1);
 }
 
-const db = await PGlite.create("./.localdb");
+const db = await PGlite.create(DB_DIR);
 const server = new PGLiteSocketServer({ db, port: DB_PORT, host: "127.0.0.1", maxConnections: 4 });
 await server.start();
-console.log(`✓ Database ready (saved in .localdb)`);
+console.log(`✓ Database ready (saved in ${DB_DIR})`);
 
 const app = spawn("npx", ["next", "dev", "-p", String(APP_PORT)], {
   stdio: "inherit",
@@ -51,6 +53,33 @@ const app = spawn("npx", ["next", "dev", "-p", String(APP_PORT)], {
   },
 });
 
+// A fresh database starts with the team's creators from data/creators.json.
+// Their recent videos are pulled on the first stats check below.
+async function loadCreatorsIfEmpty() {
+  if (!existsSync("data/creators.json")) return;
+  for (let i = 0; i < 60; i++) {
+    const ok = await fetch(`http://localhost:${APP_PORT}/settings`).then((r) => r.ok).catch(() => false);
+    if (ok) break; // the app creates the tables on its first request
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  const sql = postgres(`postgres://postgres:postgres@127.0.0.1:${DB_PORT}/postgres`, { prepare: false, max: 1, onnotice: () => {} });
+  try {
+    const [{ n }] = await sql`select count(*)::int as n from creators`;
+    if (n > 0) return;
+    const creators = JSON.parse(readFileSync("data/creators.json", "utf8"));
+    for (const c of creators) {
+      await sql`
+        insert into creators (name, handles, followers, rate_usd, contract_notes)
+        values (${c.name}, ${sql.json(c.handles ?? {})}, ${sql.json(c.followers ?? {})}, ${c.rateUsd ?? null}, ${c.notes ?? ""})`;
+    }
+    console.log(`✓ Loaded ${creators.length} creators from data/creators.json`);
+  } catch (err) {
+    console.error("Couldn't load data/creators.json:", err.message);
+  } finally {
+    await sql.end();
+  }
+}
+
 async function tick() {
   try {
     const res = await fetch(`http://localhost:${APP_PORT}/api/cron/tick`, {
@@ -63,7 +92,7 @@ async function tick() {
     // Site still starting; the next tick will catch up.
   }
 }
-setTimeout(tick, 20_000);
+loadCreatorsIfEmpty().then(() => setTimeout(tick, 5_000));
 const timer = setInterval(tick, TICK_MS);
 
 const stop = async () => {

@@ -1,0 +1,60 @@
+[
+  {
+    "name": "Cassie (Evie)",
+    "handles": {
+      "tiktok": "createswithcassie",
+      "youtube": "createswithcassie",
+      "instagram": "createswithcassie"
+    },
+    "rateUsd": 70,
+    "followers": {
+      "tiktok": 66,
+      "youtube": 66,
+      "instagram": 54
+    },
+    "notes": "Side Hustle Girlie"
+  },
+  {
+    "name": "LJ",
+    "handles": {
+      "tiktok": "lj.jennings79",
+      "youtube": "LjJennings12",
+      "instagram": "lj.jennings79"
+    },
+    "rateUsd": 60,
+    "followers": {
+      "tiktok": 58,
+      "youtube": 11,
+      "instagram": 2
+    },
+    "notes": "Gym Bro, 30 Days of Side Hustles"
+  },
+  {
+    "name": "Jeff & Olivia",
+    "handles": {
+      "tiktok": "jeff.olivia.couplehustle",
+      "youtube": "jeffandolivia",
+      "instagram": "jeff.olivia.couplehustle"
+    },
+    "rateUsd": 140,
+    "followers": {
+      "tiktok": 3,
+      "youtube": 11,
+      "instagram": 5
+    },
+    "notes": "Couple Side Hustle"
+  },
+  {
+    "name": "Lexie",
+    "handles": {
+      "tiktok": "lexie.clip",
+      "instagram": "lexie.clip"
+    },
+    "rateUsd": 40,
+    "followers": {
+      "tiktok": 9,
+      "instagram": 8
+    },
+    "notes": "High School Student Hustle , 40 Videos"
+  }
+]
