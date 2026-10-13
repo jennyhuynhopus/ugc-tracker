@@ -36,5 +36,5 @@
   "features": {
     "ghcr.io/devcontainers/features/sshd:1": {}
   },
-  "postStartCommand": "nohup npm run local > /tmp/ugc-tracker.log 2>&1 &"
+  "postStartCommand": "bash -c 'setsid nohup npm run local > /tmp/ugc-tracker.log 2>&1 < /dev/null &'"
 }
